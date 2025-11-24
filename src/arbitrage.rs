@@ -9,8 +9,6 @@ use crate::binance::OrderBook;
 use crate::task::Task;
 use crate::trading_venue::TradingVenue;
 
-pub const TOKEN_PAIR: &str = "solusdc"; // SOLANA/USDC
-
 pub trait HasOrderBook: Send + Sync {
     fn orderbook_snapshot(&self) -> Option<Arc<OrderBook>>;
 }
@@ -24,9 +22,8 @@ impl<F> ArbitrageCallback for F
 where
     F: Fn(ArbitrageOpportunity) + Send + Sync,
 {
-    #[inline(always)]
     fn call(&self, opp: ArbitrageOpportunity) {
-        (self)(opp)
+        (self)(opp);
     }
 }
 
@@ -51,7 +48,7 @@ where
     U: TradingVenue,
     C: ArbitrageCallback,
 {
-    pub fn new(
+    pub const fn new(
         venue_a: Arc<T>,
         venue_b: Arc<U>,
         trade_amounts: Vec<Decimal>,
@@ -85,25 +82,24 @@ where
         let trade_amounts = &self.trade_amounts;
         let callback = self.callback.clone();
         let on_notify = || {
-            check_arbitrage(
-                trade_amounts,
-                trade_amounts,
-                &venue_a,
-                &venue_b,
-                callback.as_ref(),
-            );
+            for &amount in trade_amounts {
+                // sell on A -> buy on B
+                check_arbitrage(amount, &venue_a, &venue_b, callback.as_ref());
+                // sell on B -> buy on A
+                check_arbitrage(amount, &venue_b, &venue_a, callback.as_ref());
+            }
         };
 
         loop {
             select! {
-                _ = self.token.cancelled() => {
+                () = self.token.cancelled() => {
                     warn!("Arbitraging cancelled");
                     break;
                 }
-                _ = receiver_a.notified() => {
+                () = receiver_a.notified() => {
                     on_notify();
                 }
-                _ = receiver_b.notified() => {
+                () = receiver_b.notified() => {
                     on_notify();
                 }
             }
@@ -125,7 +121,7 @@ where
     U: TradingVenue,
     C: ArbitrageCallback,
 {
-    pub fn new(
+    pub const fn new(
         cex: Arc<T>,
         dex: Arc<U>,
         depth: usize,
@@ -174,13 +170,18 @@ where
             return;
         }
 
-        check_arbitrage(
-            &bid_amounts,
-            &ask_amounts,
-            &self.cex,
-            &self.dex,
-            self.callback.as_ref(),
-        );
+        for amount in bid_amounts {
+            // sell on CEX, buy on DEX
+            check_arbitrage(amount, &self.cex, &self.dex, self.callback.as_ref());
+        }
+
+        for amount in ask_amounts {
+            // NOTE: here we reuse Binance ask depth as the trade size for the DEX -> CEX leg,
+            // assuming Raydium has constant price and infinite reserves.
+
+            // sell on DEX, buy on CEX
+            check_arbitrage(amount, &self.dex, &self.cex, self.callback.as_ref());
+        }
     }
 }
 
@@ -192,22 +193,19 @@ where
     C: ArbitrageCallback,
 {
     async fn run(&self) {
-        let venue_cex = self.cex.clone();
-        let venue_dex = self.dex.clone();
-
-        let receiver_cex = venue_cex.subscribe();
-        let receiver_dex = venue_dex.subscribe();
+        let receiver_cex = self.cex.subscribe();
+        let receiver_dex = self.dex.subscribe();
 
         loop {
             select! {
-                _ = self.token.cancelled() => {
+                () = self.token.cancelled() => {
                     warn!("Arbitraging cancelled");
                     break;
                 }
-                _ = receiver_cex.notified() => {
+                () = receiver_cex.notified() => {
                     self.run_check();
                 }
-                _ = receiver_dex.notified() => {
+                () = receiver_dex.notified() => {
                     self.run_check();
                 }
             }
@@ -216,47 +214,27 @@ where
 }
 
 pub fn check_arbitrage<T, U, C>(
-    forward_amounts: &[Decimal],
-    reverse_amounts: &[Decimal],
-    venue_a: &Arc<T>,
-    venue_b: &Arc<U>,
+    amount: Decimal,
+    venue_sell: &Arc<T>,
+    venue_buy: &Arc<U>,
     callback: &C,
 ) where
     T: TradingVenue,
     U: TradingVenue,
     C: ArbitrageCallback,
 {
-    for &amount in forward_amounts {
-        let profit_ab = venue_a
-            .try_quote_sell(amount)
-            .and_then(|q| venue_b.try_quote_buy(q))
-            .map(|returned| returned - amount);
+    let profit_ab = venue_sell
+        .try_quote_sell(amount)
+        .and_then(|q| venue_buy.try_quote_buy(q))
+        .map(|returned| returned - amount);
 
-        if let Some(profit) = profit_ab
-            && profit > Decimal::ZERO
-        {
-            callback.call(ArbitrageOpportunity {
-                amount,
-                profit,
-                direction: format!("{} → {}", venue_a.name(), venue_b.name()),
-            });
-        }
-    }
-
-    for &amount in reverse_amounts {
-        let profit_ba = venue_b
-            .try_quote_sell(amount)
-            .and_then(|q| venue_a.try_quote_buy(q))
-            .map(|returned| returned - amount);
-
-        if let Some(profit) = profit_ba
-            && profit > Decimal::ZERO
-        {
-            callback.call(ArbitrageOpportunity {
-                amount,
-                profit,
-                direction: format!("{} → {}", venue_b.name(), venue_a.name()),
-            });
-        }
+    if let Some(profit) = profit_ab
+        && profit > Decimal::ZERO
+    {
+        callback.call(ArbitrageOpportunity {
+            amount,
+            profit,
+            direction: format!("{} → {}", venue_sell.name(), venue_buy.name()),
+        });
     }
 }

@@ -14,6 +14,7 @@ use tokio_tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
+use url::Url;
 
 use crate::{
     raydium::program::raydium_clmm_idl::{accounts::PoolState, utils::Account},
@@ -32,8 +33,6 @@ const Q64_FACTOR: u128 = 1u128 << 64;
 
 #[derive(Clone, Debug)]
 struct PoolSnapshot {
-    #[allow(dead_code)]
-    price: Decimal,
     sqrt_price: Decimal,
     liquidity: Decimal,
     base_scale: Decimal,
@@ -51,29 +50,30 @@ enum RaydiumAmmMonitorError {
 }
 
 pub struct RaydiumAmmMonitor {
-    ws_url: String,
+    ws_url: Url,
     pool_id: String,
     commitment: String,
     sender: Arc<Notify>,
-    price_snapshot: ArcSwapOption<PoolSnapshot>,
+    pool_snapshot: ArcSwapOption<PoolSnapshot>,
     token: CancellationToken,
 }
 
 impl RaydiumAmmMonitor {
-    pub fn new(token: CancellationToken) -> Self {
+    #[must_use] 
+    pub fn new(ws_url: Url, pool_id: String, commitment: String, token: CancellationToken) -> Self {
         let sender = Arc::new(Notify::new());
         Self {
-            ws_url: "wss://api.mainnet-beta.solana.com".to_string(),
-            pool_id: "3ucNos4NbumPLZNWztqGHNFFgkHeRMBQAVemeeomsUxv".to_string(),
-            commitment: "confirmed".to_string(),
-            price_snapshot: ArcSwapOption::from(None),
+            ws_url,
+            pool_id,
+            commitment,
+            pool_snapshot: ArcSwapOption::from(None),
             sender,
             token,
         }
     }
 
     async fn run(&self) -> Result<(), RaydiumAmmMonitorError> {
-        let (ws_stream, _) = connect_async(&self.ws_url).await?;
+        let (ws_stream, _) = connect_async(self.ws_url.as_str()).await?;
         info!(url = %self.ws_url, "Websocket connected");
 
         let (mut ws_write, mut ws_read) = ws_stream.split();
@@ -96,31 +96,31 @@ impl RaydiumAmmMonitor {
 
         ws_write.send(msg.into()).await?;
 
-        info!(pool_id = %self.pool_id, "Subscribed");
+        info!(pool_id = %self.pool_id, "Subscribed to pool successfully");
 
         loop {
             select! {
-                _ = self.token.cancelled() => return Err(RaydiumAmmMonitorError::Stopped),
+                () = self.token.cancelled() => return Err(RaydiumAmmMonitorError::Stopped),
 
                 msg = ws_read.next() => match msg {
                     None => return Err(RaydiumAmmMonitorError::ChannelClosed),
                     Some(Err(err)) => return Err(RaydiumAmmMonitorError::WebSocket(err)),
-                    Some(Ok(msg)) => self.handle_message(msg).await?,
+                    Some(Ok(msg)) => self.handle_message(msg),
                 }
             }
         }
     }
 
-    async fn handle_message(&self, msg: Message) -> Result<(), RaydiumAmmMonitorError> {
+    fn handle_message(&self, msg: Message) {
         let Message::Text(text) = msg else {
-            return Ok(());
+            return;
         };
 
         let value: Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(err) => {
                 warn!(?err, raw=%text, "Invalid JSON");
-                return Ok(());
+                return;
             }
         };
 
@@ -129,22 +129,22 @@ impl RaydiumAmmMonitor {
             .and_then(|v| v.as_str());
 
         let Some(encoded) = data_str else {
-            return Ok(());
+            return;
         };
 
         let decoded = match BASE64_STANDARD.decode(encoded) {
-            Ok(b) => b,
+            Ok(bytes) => bytes,
             Err(err) => {
                 warn!(?err, "Base64 decode failed");
-                return Ok(());
+                return;
             }
         };
 
         match Account::try_from_bytes(&decoded) {
             Ok(Account::PoolState(state)) => {
-                if let Some(snapshot) = build_snapshot(state) {
-                    debug!("{snapshot:?}");
-                    self.price_snapshot.store(Some(Arc::new(snapshot)));
+                if let Some(snapshot) = build_snapshot(&state) {
+                    debug!(pool_snapshot = ?snapshot);
+                    self.pool_snapshot.store(Some(Arc::new(snapshot)));
                     self.sender.notify_waiters();
                 } else {
                     warn!("Failed to build Raydium snapshot");
@@ -153,13 +153,10 @@ impl RaydiumAmmMonitor {
             Ok(_) => {}
             Err(err) => warn!(?err, "Account parse failed"),
         }
-
-        Ok(())
     }
 }
 
-#[inline(always)]
-fn build_snapshot(state: PoolState) -> Option<PoolSnapshot> {
+fn build_snapshot(state: &PoolState) -> Option<PoolSnapshot> {
     let sqrt_price_x64 = state.sqrt_price_x64;
     let liquidity_raw = state.liquidity;
     let mint_decimals_0 = state.mint_decimals_0;
@@ -183,18 +180,17 @@ fn build_snapshot(state: PoolState) -> Option<PoolSnapshot> {
     }
 
     let base_scale = {
-        let value = 10u128.checked_pow(mint_decimals_0 as u32)?;
+        let value = 10u128.checked_pow(u32::from(mint_decimals_0))?;
         Decimal::from_str_exact(&value.to_string()).ok()?
     };
     let quote_scale = {
-        let value = 10u128.checked_pow(mint_decimals_1 as u32)?;
+        let value = 10u128.checked_pow(u32::from(mint_decimals_1))?;
         Decimal::from_str_exact(&value.to_string()).ok()?
     };
 
-    let price = compute_price(sqrt_price_x64, mint_decimals_0, mint_decimals_1)?;
+    //let price = compute_price(sqrt_price_x64, mint_decimals_0, mint_decimals_1)?;
 
     Some(PoolSnapshot {
-        price,
         sqrt_price,
         liquidity,
         base_scale,
@@ -202,6 +198,7 @@ fn build_snapshot(state: PoolState) -> Option<PoolSnapshot> {
     })
 }
 
+#[allow(dead_code)]
 fn compute_price(sqrt_price_x64: u128, decimals_0: u8, decimals_1: u8) -> Option<Decimal> {
     let sqrt_price = (sqrt_price_x64 as f64) / (Q64_FACTOR as f64);
     let decimals_diff = i32::from(decimals_0) - i32::from(decimals_1);
@@ -214,12 +211,12 @@ impl Task for RaydiumAmmMonitor {
     async fn run(&self) {
         loop {
             match self.run().await {
-                Ok(_) => warn!("Streaming stopped unexpectedly"),
+                Ok(()) => warn!("Streaming stopped unexpectedly"),
                 Err(RaydiumAmmMonitorError::Stopped) => {
                     warn!("Cancelled externally");
                     return;
                 }
-                Err(err) => warn!(?err, "Monitor error"),
+                Err(e) => warn!(error = ?e, "Monitor error"),
             }
             info!(secs = RECONNECT_INTERVAL.as_secs(), "Reconnecting ...");
             sleep(RECONNECT_INTERVAL).await;
@@ -233,13 +230,13 @@ impl TradingVenue for RaydiumAmmMonitor {
     }
 
     fn try_quote_sell(&self, base_in: Decimal) -> Option<Decimal> {
-        let snapshot = self.price_snapshot.load_full()?;
+        let snapshot = self.pool_snapshot.load_full()?;
         let base_in = base_in.max(Decimal::ZERO); // set negative to zero
-        if base_in.is_zero()
-            || snapshot.liquidity <= Decimal::ZERO
-            || snapshot.sqrt_price <= Decimal::ZERO
-        {
+        if base_in.is_zero() {
             return Some(Decimal::ZERO);
+        }
+        if snapshot.liquidity <= Decimal::ZERO || snapshot.sqrt_price <= Decimal::ZERO {
+            return None;
         }
 
         let base_raw = base_in * snapshot.base_scale;
@@ -247,7 +244,7 @@ impl TradingVenue for RaydiumAmmMonitor {
         let inv_sqrt_new = Decimal::ONE / snapshot.sqrt_price + delta_inv_sqrt;
 
         if inv_sqrt_new.is_zero() {
-            return Some(Decimal::ZERO);
+            return None;
         }
 
         let sqrt_new = Decimal::ONE / inv_sqrt_new;
@@ -258,22 +255,17 @@ impl TradingVenue for RaydiumAmmMonitor {
     }
 
     fn try_quote_buy(&self, quote_in: Decimal) -> Option<Decimal> {
-        let snapshot = self.price_snapshot.load_full()?;
+        let snapshot = self.pool_snapshot.load_full()?;
         let quote_in = quote_in.max(Decimal::ZERO);
-        if quote_in.is_zero()
-            || snapshot.liquidity <= Decimal::ZERO
-            || snapshot.sqrt_price <= Decimal::ZERO
-        {
+        if quote_in.is_zero() {
             return Some(Decimal::ZERO);
+        }
+        if snapshot.liquidity <= Decimal::ZERO || snapshot.sqrt_price <= Decimal::ZERO {
+            return None;
         }
 
         let quote_raw = quote_in * snapshot.quote_scale;
         let sqrt_new = snapshot.sqrt_price + quote_raw / snapshot.liquidity;
-
-        // shouldn't happen
-        if sqrt_new <= snapshot.sqrt_price {
-            return Some(Decimal::ZERO);
-        }
 
         let inv_sqrt_old = Decimal::ONE / snapshot.sqrt_price;
         let inv_sqrt_new = Decimal::ONE / sqrt_new;

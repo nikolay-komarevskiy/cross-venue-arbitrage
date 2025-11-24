@@ -17,6 +17,7 @@ use tokio_tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use url::Url;
 
 use crate::{arbitrage::HasOrderBook, task::Task, trading_venue::TradingVenue};
 
@@ -76,6 +77,7 @@ pub struct OrderBook {
 }
 
 impl OrderBook {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -148,39 +150,34 @@ impl OrderBook {
 }
 
 pub struct BinanceMonitor {
-    ws_url: String,
-    rest_url: String,
-    book: ArcSwapOption<OrderBook>,
+    ws_url: Url,
+    rest_url: Url,
+    orderbook: ArcSwapOption<OrderBook>,
     http_client: Client,
     sender: Arc<Notify>,
     token: CancellationToken,
 }
 
 impl BinanceMonitor {
-    pub fn new(symbol: &str, token: CancellationToken) -> Self {
-        let symbol_lower = symbol.to_lowercase();
-        let symbol_upper = symbol.to_uppercase();
-        let sender = Arc::new(Notify::new());
-
+    #[must_use]
+    pub fn new(rest_url: Url, ws_url: Url, token: CancellationToken) -> Self {
         Self {
-            ws_url: format!("wss://stream.binance.com:9443/ws/{symbol_lower}@depth"),
-            rest_url: format!(
-                "https://api.binance.com/api/v3/depth?symbol={symbol_upper}&limit=1000"
-            ),
-            book: ArcSwapOption::new(None),
+            ws_url,
+            rest_url,
+            orderbook: ArcSwapOption::new(None),
             http_client: Client::new(),
-            sender,
+            sender: Arc::new(Notify::new()),
             token,
         }
     }
 
     #[inline]
-    pub fn book_snapshot(&self) -> Option<Arc<OrderBook>> {
-        self.book.load_full()
+    pub fn orderbook_snapshot(&self) -> Option<Arc<OrderBook>> {
+        self.orderbook.load_full()
     }
 
     async fn run(&self) -> Result<(), OrderBookError> {
-        let (ws_stream, _) = connect_async(&self.ws_url).await?;
+        let (ws_stream, _) = connect_async(self.ws_url.as_str()).await?;
         info!(url = %self.ws_url, "WebSocket connected");
         let (mut ws_write, mut ws_read) = ws_stream.split();
 
@@ -196,7 +193,7 @@ impl BinanceMonitor {
                     break update;
                 }
                 Some(Ok(Message::Ping(p))) => ws_write.send(Message::Pong(p)).await?,
-                Some(Ok(_)) => continue,
+                Some(Ok(_)) => {},
                 Some(Err(e)) => return Err(OrderBookError::WebSocket(e)),
                 None => {
                     return Err(OrderBookError::InvalidState(
@@ -212,7 +209,7 @@ impl BinanceMonitor {
         // Fetch snapshot
         let snapshot: DepthSnapshot = self
             .http_client
-            .get(&self.rest_url)
+            .get(self.rest_url.as_str())
             .send()
             .await?
             .json()
@@ -236,7 +233,7 @@ impl BinanceMonitor {
         info!("Applied snapshot lastUpdateId={}", snapshot.last_update_id);
 
         // Apply buffered updates
-        for update in buffer.drain(..) {
+        for update in buffer {
             if update.first_update_id <= book.last_update_id + 1
                 && update.final_update_id > book.last_update_id
             {
@@ -244,7 +241,7 @@ impl BinanceMonitor {
             }
         }
 
-        self.book.store(Some(Arc::new(book.clone())));
+        self.orderbook.store(Some(Arc::new(book.clone())));
 
         info!(
             best_bid = ?book.bids.iter().next_back(),
@@ -254,16 +251,16 @@ impl BinanceMonitor {
 
         loop {
             select! {
-                _ = self.token.cancelled() => return Err(OrderBookError::Stopped),
+                () = self.token.cancelled() => return Err(OrderBookError::Stopped),
 
                 msg = ws_read.next() => match msg {
                     Some(Ok(Message::Text(text))) => {
                         let update: DepthUpdate = serde_json::from_str(&text)?;
 
-                        if let Some(current) = self.book.load_full() {
+                        if let Some(current) = self.orderbook.load_full() {
                             let mut new_book = (*current).clone(); // clone incrementally
                             new_book.apply_update(&update)?;
-                            self.book.store(Some(Arc::new(new_book)));
+                            self.orderbook.store(Some(Arc::new(new_book)));
                             self.sender.notify_waiters();
                         }
                     }
@@ -323,7 +320,7 @@ impl TradingVenue for BinanceMonitor {
     }
 
     fn try_quote_sell(&self, mut base_in: Decimal) -> Option<Decimal> {
-        let book = self.book_snapshot()?;
+        let book = self.orderbook_snapshot()?;
         let mut quote_out = Decimal::ZERO;
 
         for (price, qty) in book.bids.iter().rev() {
@@ -339,7 +336,7 @@ impl TradingVenue for BinanceMonitor {
     }
 
     fn try_quote_buy(&self, mut quote_out: Decimal) -> Option<Decimal> {
-        let book = self.book_snapshot()?;
+        let book = self.orderbook_snapshot()?;
         let mut base_out = Decimal::ZERO;
 
         for (price, qty) in &book.asks {
@@ -358,6 +355,6 @@ impl TradingVenue for BinanceMonitor {
 
 impl HasOrderBook for BinanceMonitor {
     fn orderbook_snapshot(&self) -> Option<Arc<OrderBook>> {
-        self.book_snapshot()
+        self.orderbook_snapshot()
     }
 }
