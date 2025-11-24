@@ -9,13 +9,14 @@ pub trait Task: Send + Sync {
 }
 
 #[derive(Default)]
-pub struct TaskRunner {
+pub struct TasksRunner {
     tasks: Vec<Arc<dyn Task>>,
     tracker: TaskTracker,
     token: CancellationToken,
 }
 
-impl TaskRunner {
+impl TasksRunner {
+    #[must_use]
     pub fn new(token: CancellationToken) -> Self {
         Self {
             token,
@@ -28,10 +29,10 @@ impl TaskRunner {
     }
 
     /// Spawns all tasks
-    /// For CPU-bound tasks (like arbitrage detection) consider a blocking thread pool (spawn_blocking)
+    /// For CPU-bound tasks (like arbitrage detection) consider a blocking thread pool (`spawn_blocking`)
     pub fn start(&self) {
         for task in &self.tasks {
-            let task = Arc::clone(task);
+            let task = task.clone();
             self.tracker.spawn(async move {
                 task.run().await;
             });

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" version="29.1.1">
+  <diagram name="Page-1" id="4EkHYHzzgugG4gKymtG2">
+    <mxGraphModel dx="2066" dy="791" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-15" edge="1" parent="1" source="9OJ7NHJNUkRCB46oYHJW-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="9OJ7NHJNUkRCB46oYHJW-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-16" edge="1" parent="1" source="9OJ7NHJNUkRCB46oYHJW-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="9OJ7NHJNUkRCB46oYHJW-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-18" edge="1" parent="1" source="9OJ7NHJNUkRCB46oYHJW-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="9OJ7NHJNUkRCB46oYHJW-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot; style=&quot;font-size: 14px;&quot;&gt;TasksRunner&lt;/font&gt;&lt;/b&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• add(task)&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• start() spawns async tasks&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• shutdown() cancels + waits&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="145" x="560" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot; style=&quot;font-size: 14px;&quot;&gt;BinanceMonitor&lt;/font&gt;&lt;/b&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• REST snapshot + WS deltas&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• publishes order book updates&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="200" x="150" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot; style=&quot;font-size: 14px;&quot;&gt;RaydiumAmmMonitor&lt;/font&gt;&lt;/b&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• subscribe to Solana pool state&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• publish liquidity/price updates&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="200" x="390" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot; style=&quot;font-size: 14px;&quot;&gt;SimpleArbitrageDetector&lt;/font&gt;&lt;/b&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• listens to both monitors&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• iterates configured trade sizes&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• invokes check_arbitrage() both ways&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="210" x="980" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot; style=&quot;font-size: 14px;&quot;&gt;OrderBookArbitrageDetector&lt;/font&gt;&lt;/b&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• listens to both monitors&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• derives trade sizes from bids/asks&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• invokes check_arbitrage() both ways&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="210" x="690" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;" value="&lt;b&gt;&lt;font face=&quot;Mono&quot;&gt;fn check_arbitrage(amount, venue_sell, venue_buy)&lt;/font&gt;&lt;/b&gt;&lt;div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• sell on venue_sell, buy on venue_buy&lt;/font&gt;&lt;/div&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;font face=&quot;Mono&quot;&gt;• callback invoked when profit &amp;gt; 0&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="290" x="800" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="9OJ7NHJNUkRCB46oYHJW-17" edge="1" parent="1" source="9OJ7NHJNUkRCB46oYHJW-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.555;entryY=0.018;entryDx=0;entryDy=0;entryPerimeter=0;" target="9OJ7NHJNUkRCB46oYHJW-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

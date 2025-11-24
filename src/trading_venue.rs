@@ -5,7 +5,7 @@ use tokio::sync::Notify;
 
 pub trait TradingVenue: Send + Sync {
     /// Name of the venue.
-    fn name(&self) -> &'static str;
+    const NAME: &'static str;
 
     /// Given `base_in` (amount of base token to sell), returns amount of quote token received.
     fn try_quote_sell(&self, base_in: Decimal) -> Option<Decimal>;
